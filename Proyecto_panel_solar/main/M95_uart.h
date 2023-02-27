@@ -71,7 +71,7 @@ char M95_readSMS(char*);
 void M95_sendSMS(char *mensaje, char *numero);
 
 int readAT(char *ok, char *error, uint32_t timeout, char *response);
-uint8_t TCP_open(char *IP, char *PORT);
+uint8_t TCP_open();
 uint8_t TCP_send(char *msg, uint8_t len);
 void TCP_close();
 uint8_t OTA(uint8_t *buff, uint8_t *inicio, uint8_t *fin, uint32_t len);

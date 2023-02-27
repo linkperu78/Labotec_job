@@ -120,24 +120,20 @@ static void MODEM_event_task(void *pvParameters){
             if(rx_modem_ready == 0){
               bzero(dtmp, RD_BUF_SIZE);
             }
-            //ESP_LOGI(TAG, "uart[%d] event:", EX_UART_NUM);
             switch(event.type) {
                 case UART_DATA:
-                    printf("Data recibida = %d\n",(int)event.size);
-                    printf("uart_msg = %s\n",(char*)dtmp);
                     if(event.size >= 120){
                         vTaskDelay(100/portTICK_PERIOD_MS);
-                        ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
+                        ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
                     }
                     if(rx_modem_ready == 0){
                       uart_get_buffered_data_len(UART_MODEM,(size_t *)&ring_buff_len);
                       rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);
-                      
                       rx_modem_ready = 1;
                     }
                     break;
                 default:
-                    //ESP_LOGI(TAG, "uart event type: %d", event.type);
+                    vTaskDelay(10);
                     break;
             }
         }
@@ -146,42 +142,11 @@ static void MODEM_event_task(void *pvParameters){
     free(dtmp);
     dtmp = NULL;
     vTaskDelete(NULL);
-
-/*
-    //const char *MODEM_TAG = "uart_events_modem";
-    uart_event_t event;
-    uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
-    //int ring_buff_len;
-    p_RxModem = dtmp;
-    for(;;) {
-        if(xQueueReceive(uart_modem_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
-        	if(rx_modem_ready == 0){
-                bzero(dtmp, RD_BUF_SIZE);
-            }
-            if(event.type == UART_DATA) {				
-				rxBytesModem=event.size;
-				if(rxBytesModem > 120){
-					vTaskDelay(100 / portTICK_PERIOD_MS);
-					rxBytesModem=event.size;
-				}
-
-				//ESP_LOGI(TAG, "[UART DATA]: rxBytesModem %d", rxBytesModem);
-				uart_read_bytes(UART_MODEM, dtmp, event.size, 0);
-				//ESP_LOGI(TAG,"rx data: %s",(char *)dtmp);
-				p_RxModem=dtmp;
-				rx_modem_ready=1;
-            }
-        }
-        vTaskDelay(80/portTICK_PERIOD_MS);
-    }
-    free(dtmp);
-    dtmp = NULL;
-    vTaskDelete(NULL);
-    */
 }
 
 // Tarea principal donde leemos y enviamos los datos a la database
 static void rs485_task(){
+
     m95.signal= get_M95_signal();
     strcpy(m95.IMEI,get_M95_IMEI());
     strcat(m95.topic,m95.IMEI);
@@ -352,7 +317,7 @@ void OTA_check(void){
   do{
       intentos++;
       printf("Intento n°%d\r\n",intentos);
-      if(!TCP_open("18.229.227.108", "65431")){
+      if(!TCP_open()){
 		ESP_LOGI(OTA_TAG,"No se conecto al servidor");
 		TCP_close();
 		printf("OTA:Desconectado\r\n");
