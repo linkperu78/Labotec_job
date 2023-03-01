@@ -9,8 +9,8 @@ esp_ota_handle_t otaHandlerXXX = 0;
 // Sensor buffer para guardar datos recibidos por RS485
 uint8_t*  	buffer_rx_rs485;
 // M95 buffer para guardar datos recibidos por el M95
-char 		M95_buffer[255];
-//char 		M95_buffer[500];
+//char 		M95_buffer[255];
+char 		M95_buffer[500];
 //char* 		uart_m95_string;
 // Bandera para sincronizar hora
 uint8_t  	epoch_ready;
@@ -144,7 +144,7 @@ char* get_M95_IMEI(){
  */
 int get_M95_signal(){
 	// M95_buffer -> Variable donde se almacena la respuesta del M95
-	uart_flush()
+	uart_flush(UART_MODEM);
 	int intentos = 4;
 	while(intentos > 0){
 		if(sendAT("\r\nAT+CSQ\r\n","+CSQ","ERROR",500,M95_buffer) == 1){
@@ -175,27 +175,23 @@ int get_M95_signal(){
             y guarda esos valores en /result  
  */
 bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpconnectID,int retain){
-	sprintf(commando_M95,"\r\nAT+QMTPUB=%u,1,1,%d,\"%s\",%u\r\n",tcpconnectID,retain,topic,data_len);
-	sendAT(commando_M95,">","ERROR",500,M95_buffer);
-	vTaskDelay(10 / portTICK_PERIOD_MS);
-	rx_modem_ready = 0;
-	uart_write_bytes(UART_MODEM,data,data_len);
-	int64_t actual_time = esp_timer_get_time();
-	int k = 0;
 	
-	while((esp_timer_get_time() - actual_time) < 3 *1000000){
-		if(!(rxBytesModem > 0)){
-			continue;
-		} 
-		memcpy(M95_buffer,p_RxModem,rxBytesModem);
-		if (strstr(M95_buffer,"+QMTPUB:")!= NULL){
-			if(debug == 1) printf("\t .. Public\n");
-			k = 1;    
-			break;
-		}
+	sprintf(commando_M95,"AT+QMTPUB=%u,0,0,%d,\"%s\",%u\r\n",tcpconnectID,retain,topic,data_len);
+	//printf("Pub_msg=\n%s\n",commando_M95);
+	
+	sendAT(commando_M95,">","ERROR",1000,M95_buffer);
+	vTaskDelay(100);
+
+	uart_write_bytes(UART_MODEM,data,data_len);
+	
+	int k = 0;
+	k = readAT("+QMT","ERROR\r\n",5000,M95_buffer);
+	
+	if(k == 0){
+		return 0;
 	}
-	uart_flush(UART_MODEM);
-	return (k == 1);
+
+	return 1;
 }
 
 uint8_t M95_begin(){
@@ -204,7 +200,7 @@ uint8_t M95_begin(){
 	// Validate AT Commands
 	//sendAT("AT\r\n","OK\r\n","ERROR\r\n",1000,M95_buffer);
 	// Disable local echo mode			
-	sendAT("ATE0\r\n","OK\r\n","ERROR\r\n",5000,M95_buffer);		
+	//sendAT("ATE0\r\n","OK\r\n","ERROR\r\n",5000,M95_buffer);		
 	deactivate_pin(GREEN_LED);
 	vTaskDelay(100 / portTICK_PERIOD_MS);
 	// Disable "result code" prefix
@@ -230,7 +226,7 @@ uint8_t M95_begin(){
 	// Synchronize the Local Time Via NTP
 	vTaskDelay(1000/portTICK_PERIOD_MS);
 	bandera = sendAT("AT+QNTP=\"0.south-america.pool.ntp.org\"\r\n"
-					,"+QNTP: 0","3",12000,M95_buffer);
+					,"+QNTP:","3",12000,M95_buffer);
 	if((bandera == 0)){
 		printf("No se pudo actualizar la hora\n");
 		
@@ -254,10 +250,10 @@ int connect_MQTT_server(){
 		ESP_LOGE("M95 E","Cant open IP");
 		return 0;
 	}
-	vTaskDelay(1000/portTICK_PERIOD_MS);
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
     // Connect with name "M95" to Broker
 	int a = sendAT("AT+QMTCONN=1,\"Agro_test\"\r\n","OK\r\n","ERROR\r\n",5000,M95_buffer);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
 	return a;
 }
 
@@ -342,11 +338,12 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 		activate_pin(GREEN_LED);
 		vTaskDelay(100 / portTICK_PERIOD_MS);
 		deactivate_pin(GREEN_LED);
-		//printf("Request Command =\n\t%s",command);
+		printf("Request Command =\n\t%s",command);
 	}
 
+	uart_flush(UART_MODEM);
 	rx_modem_ready = 0;
-	ESP_LOGI("M95","Commando:\n%s\n",command);
+	//ESP_LOGI("M95","Commando:\n%s\n",command);
 	uart_write_bytes(UART_MODEM, (uint8_t *)command, strlen(command));
 	
 	while((esp_timer_get_time() - n) < idle_time){
@@ -366,16 +363,16 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 			_error = true;
 			break;
 		}
+		rx_modem_ready = 0;
+		vTaskDelay(20);
 	}
 
-	ESP_LOGE("M95","Say:\n%s\n",(char *)p_RxModem);
+	//ESP_LOGE("M95","Say:\n%s\n",(char *)p_RxModem);
 
     if(_timeout){
 		printf("- M95 not responded\n");
         return 0;
     }
-
-	//ESP_LOGE("M95","Say:\n%s\n",(char *)p_RxModem);
 
 	memcpy(response,p_RxModem,rxBytesModem);
 	if(!_error){
@@ -394,24 +391,26 @@ int readAT(char *ok, char *error, uint32_t timeout, char *response)
 	//uint16_t RxLen;
 	uint64_t n = esp_timer_get_time();
 	uint64_t idle_time = (uint64_t)(timeout*1000);
+
 	rx_modem_ready = 0;
-	
+
 	while((esp_timer_get_time() - n) < idle_time){
-		//vTaskDelay(2);
 		if(rx_modem_ready == 0){
 			continue;
 		}
-		ESP_LOGE("Rspta",":\n%s\n",(char*)p_RxModem);
-		if (strstr((char *)p_RxModem,ok)!= NULL){
-			correcto=1;
+		if (strstr((char *)p_RxModem,ok) != NULL){
+			correcto = 1;
 			_timeout = false;
 			break;
 		}
 		else if(strstr((char *)p_RxModem,error)!= NULL){
-			correcto=2;
+			correcto = 2;
 			_timeout = false;
 			break;
 		}
+		//ESP_LOGE("Rspta",":\n%s\n",(char*)p_RxModem);
+		rx_modem_ready = 0;
+		vTaskDelay(20);
 	}	
 
     if(_timeout){
@@ -567,18 +566,22 @@ uint8_t TCP_send(char *msg, uint8_t len){
     //sendAT(m95,"ATE1\r\n","OK\r\n","ERROR\r\n",5000,  m95->M95_buffer);//DES Activa modo ECO.
 
     uint8_t temporal = 0;
-	debug = 0;
+
+	//debug = 0;
+	debug = 1;
+
     temporal = sendAT("AT+QISEND\r\n",">","ERROR\r\n",25500,M95_buffer);
     if(temporal != 1){ 
         return 0; 
     }
-    uart_write_bytes(UART_MODEM,(void *)msg,len);
+	uart_write_bytes(UART_MODEM,(void *)msg,len);
+
     temporal = sendAT("\x1A","SEND OK\r\n","ERROR\r\n",25500,M95_buffer);
 	if(temporal != 1){
         return 0;
     }
     //printf("SEND OK CORRECTO\r\n");
-    memset(M95_buffer, 0 , 50);
+	memset(M95_buffer, 0 , 50);
     return 1;
 }
 

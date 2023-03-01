@@ -15,10 +15,15 @@ OTA_EX_ ota_uartControl_M95(void){
   ota_init();
   do{
       len = ota_uart_read_M95( Rx_Buffer, OTA_PACKET_MAX_SIZE );
+
+      //printf("len = %d\n",len);
+      ota_debug = false;
+
       if( len != 0u )
       {
         ret = ota_flash( Rx_Buffer, len );
       }else{
+        printf("\nEEEEEEEEEEEEE\n");
         ret = OTA_EX_ERR;
       }
 
@@ -40,30 +45,34 @@ OTA_EX_ ota_uartControl_M95(void){
 
 
 
+/*
+  REVISAR ESTE CODIGO ------- 
+*/
 uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
   uint16_t index   =  0u;
   //uint16_t data_len;
 
   uint64_t timeout = esp_timer_get_time();
-  uint32_t idle_timeout = esp_timer_get_time();
+  uint64_t idle_timeout = esp_timer_get_time();
   bool SOF = false;
+
   size_t len_data = 0;
   rx_modem_ready = 0;
   uint8_t * pointer = p_RxModem;
+
   while(true){
     // timeout general
-    if( (esp_timer_get_time()-timeout)/1000 > 25000){
-      debug_ota("ota_m95> ERROR, timeout index=%d\r\n", index);
+    if( ( esp_timer_get_time() - timeout ) / 1000 > 25000 ){
+      ESP_LOGE("OTA_ERROR","timeout index=%d\r\n", index);
       return 0;
-      break;
     }
-    if((rx_modem_ready == 1)&(rxBytesModem != 0)){
-      debug_ota("data recibida : %d bytes",rxBytesModem);
+
+    if((rx_modem_ready == 1) && (rxBytesModem != 0)){
+      //debug_ota("data recibida : %d bytes",rxBytesModem);
       len_data = rxBytesModem;
     }
     
-    if(len_data != 0){  
-      
+    if(len_data != 0){        
       for (size_t i = 0; i < len_data; i++)
       {
         if(index >= OTA_PACKET_MAX_SIZE+2){
@@ -72,7 +81,7 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
         }
         data[index] = *pointer;
         pointer++;
-        //printf("0x%x",data[index]);
+
         if(data[index] == 0xAA){
           debug_ota("SOF");  
           SOF = true;
@@ -80,19 +89,21 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
         if(SOF){
           index = index+1;
         }
+
+        idle_timeout = esp_timer_get_time();
       }
-      printf("paquete index: %d\r\n",index);
-      pointer = p_RxModem;
-      len_data = 0;
-      //printf("\r\n****\r\n");
-      idle_timeout = esp_timer_get_time();  
-      //data[index] = m95->M95Serial->read();
-      rx_modem_ready = 0;
+
+
+      //printf("Numero index = %d\r\n",index);
+
       if(SOF){
-          debug_ota("ota_m95> OK, data recibida -> index %d, %ld ms\r\n", index,(uint32_t)((esp_timer_get_time()-idle_timeout)/1000));
+          debug_ota("ota_m95> OK, data recibida -> index %d\r\n", index);
           break;
       }
-      
+
+      rx_modem_ready = 0;
+      pointer = p_RxModem;
+      len_data = 0;
     }
 
     // idle timeout
@@ -100,7 +111,6 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
     //   debug_ota("ota_uart> OK, data recibida -> index %d\r\n", index);
     //   break;
     // }
-     vTaskDelay(1);
   }
   return index;
 }
@@ -120,6 +130,5 @@ OTA_EX_ ota_uart_send_resp_M95(uint8_t ans){
   //send response
   //HAL_UART_Transmit(&huart6, (uint8_t *)&rsp, sizeof(OTA_RESP_), HAL_MAX_DELAY);
   TCP_send((char *)&rsp, sizeof(OTA_RESP_));
-
   return OTA_EX_OK;
 }

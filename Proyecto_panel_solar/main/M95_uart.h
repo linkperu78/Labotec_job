@@ -36,6 +36,7 @@
 
 
 extern uint8_t rx_modem_ready;
+extern bool ota_debug;
 extern int rxBytesModem;
 extern uint8_t * p_RxModem;
 

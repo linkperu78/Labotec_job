@@ -44,6 +44,8 @@ int wake_count;
 
 uint8_t rx_modem_ready;
 uint8_t * p_RxModem;
+bool ota_debug = false;
+
 void OTA_check(void);
 bool state_blink_led = false;       // Blink indicador de funcionamiento
 uint8_t* buffer_rs485;              // buffer para leer datos del RS485
@@ -123,17 +125,18 @@ static void MODEM_event_task(void *pvParameters){
             switch(event.type) {
                 case UART_DATA:
                     if(event.size >= 120){
+                        //ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
                         vTaskDelay(100/portTICK_PERIOD_MS);
-                        ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
                     }
                     if(rx_modem_ready == 0){
-                      uart_get_buffered_data_len(UART_MODEM,(size_t *)&ring_buff_len);
-                      rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);
-                      rx_modem_ready = 1;
+                        //printf("Event_size = %d\n",event.size);
+                        uart_get_buffered_data_len(UART_MODEM,(size_t *)&ring_buff_len);
+                        rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);
+                        rx_modem_ready = 1;
                     }
                     break;
+                    
                 default:
-                    vTaskDelay(10);
                     break;
             }
         }
@@ -146,7 +149,7 @@ static void MODEM_event_task(void *pvParameters){
 
 // Tarea principal donde leemos y enviamos los datos a la database
 static void rs485_task(){
-
+    
     m95.signal= get_M95_signal();
     strcpy(m95.IMEI,get_M95_IMEI());
     strcat(m95.topic,m95.IMEI);
@@ -237,6 +240,7 @@ static void rs485_task(){
             continue;
         }
         if(M95_PubMqtt_data((uint8_t*)msg_mqtt,m95.topic,strlen(msg_mqtt),1,0)){
+            printf("\t... Sucess\n");
             a = 1;
             deactivate_pin(ESP_ERROR_PIN);
             activate_pin(ESP_READY_PIN);
@@ -247,21 +251,26 @@ static void rs485_task(){
     if(a!=1){
         ESP_LOGE(TAG,"No se establecio conexion al broker");
     }
+    
 
     // Chequeamos si el OTA es requerido
-    wake_count = M95_check_subs(m95.IMEI);
+    // wake_count = M95_check_subs(m95.IMEI);
 
-    ESP_LOGI(TAG,"\n\tEstado del ota = \" %s \"\n",(wake_count == 1 ? "Requerido":"No requerido"));
-    disconnect_mqtt();
+    //ESP_LOGI(TAG,"\n\tEstado del ota = \" %s \"\n",(wake_count == 1 ? "Requerido":"No requerido"));
+    //disconnect_mqtt();
 
     deactivate_pin(WHITE_LED);
     
     // ---------------------------------------------------------------------------
     // ---------------------------------------------------------------------------
 
+    wake_count = 1;
+
     if(wake_count > 0){
         doc = cJSON_CreateObject();
-        cJSON_AddItemToObject(doc,"imei",cJSON_CreateString(m95.IMEI));
+        //cJSON_AddItemToObject(doc,"imei",cJSON_CreateString(m95.IMEI));
+        // EDIT
+        cJSON_AddItemToObject(doc,"imei",cJSON_CreateString("865234067075613"));
         cJSON_AddItemToObject(doc,"project",cJSON_CreateString("test_project"));
         cJSON_AddItemToObject(doc,"ota",cJSON_CreateString("true"));
         cJSON_AddItemToObject(doc,"cmd",cJSON_CreateString("false"));
@@ -287,9 +296,10 @@ static void rs485_task(){
             M95_poweroff();
     };
     // Sleep Mode
-    free(string_temp);
+    
+    //free(string_temp);
     free(buffer_rs485);
-    free(msg_mqtt);
+    //free(msg_mqtt);
     activate_pin(RS485_ENABLE_PIN);
     power_off_gpio();
 
@@ -299,9 +309,8 @@ static void rs485_task(){
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
     printf("\nSleep Mode = %d min\n",(int)(TIME_SLEEP));
     //esp_sleep_enable_timer_wakeup(TIME_SLEEP * MIN_TO_S * S_TO_US- esp_timer_get_time());
-    esp_sleep_enable_timer_wakeup(2*60 * S_TO_US);
+    esp_sleep_enable_timer_wakeup(5*60 * S_TO_US);
     esp_deep_sleep_start();
-
 
     vTaskDelete(NULL);
 }
@@ -318,24 +327,28 @@ void OTA_check(void){
       intentos++;
       printf("Intento n°%d\r\n",intentos);
       if(!TCP_open()){
-		ESP_LOGI(OTA_TAG,"No se conecto al servidor");
+		ESP_LOGI(OTA_TAG,"No se conecto al servidor\r\n");
 		TCP_close();
-		printf("OTA:Desconectado\r\n");
+		//printf("OTA:Desconectado\r\n");
 		break;
 	  }
 
-	  printf("OTA:Solicitando actualizacion...\r\n");
+	  ESP_LOGI(OTA_TAG,"Solicitando actualizacion...\r\n");
 	  if(TCP_send(output, strlen(output))){                           // 1. Se envia la info del dispositivo
-		//printf("OTA:Esperando respuesta...\r\n");
+		
+        printf("\t OTA : Esperando respuesta...\r\n");
 		readAT("}\r\n", "-8/()/(\r\n",15000,buffer);   // 2. Se recibe la 1ra respuesta con ota True si tiene un ota pendiente... (el servidor lo envia justo despues de recibir la info)(}\r\n para saber cuando llego la respuesta)
-		debug_ota("main> repta %s\r\n", buffer);
+		
+        debug_ota("main> repta %s\r\n", buffer);
+
 		if(strstr(buffer,"\"ota\": \"true\"") != 0x00  ){
             repuesta_ota = true;
-			ESP_LOGI(OTA_TAG,"Iniciando OTA");
-
+			
+            ESP_LOGI(OTA_TAG,"Iniciando OTA");
 			//printf("Watchdog desactivado\r\n");
-			watchdog_en=0;
+			watchdog_en = 0;
 
+///////// REVISAR
 			if(ota_uartControl_M95() == OTA_EX_OK){
 			    debug_ota("main> OTA m95 Correcto...\r\n");
                 esp_restart();    
@@ -347,8 +360,10 @@ void OTA_check(void){
 			watchdog_en=1;
 			printf("Watchdog reactivado\r\n");
 		}
-		printf("OTA:No hubo respuesta\r\n");
+		ESP_LOGE("OTA ERROR","No hubo respuesta\r\n");
 	  }
+
+      vTaskDelay(5000);
 	}
 	while(!repuesta_ota&(intentos<5));
 }
