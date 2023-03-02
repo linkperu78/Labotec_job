@@ -45,11 +45,16 @@ extern uint8_t * p_RxModem;
 
 // Funcion con formato para envio de comandos AT
 int sendAT(char *Mensaje, char *ok, char *error, uint32_t timeout, char *respuesta);
+
+int M95_check_uart(char* ok_msg, int time);
+
 // Encendemos el M95
 void M95_pwron(); 
+
 // Configuramos los estados iniciales del M95
 uint8_t M95_begin();
 int connect_MQTT_server();
+
 // Verificamos la conexion con el ESP y M95
 int M95_CheckConnection();
 void M95_checkpower();

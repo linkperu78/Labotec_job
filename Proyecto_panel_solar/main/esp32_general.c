@@ -7,7 +7,7 @@ void activate_pin(int pin_number){
 
 void deactivate_pin(int pin_number){
 	gpio_set_level(pin_number, 0);	
-	vTaskDelay(100 / portTICK_PERIOD_MS);	
+	vTaskDelay(10 / portTICK_PERIOD_MS);	
 }
 
 float read_battery(){
@@ -43,11 +43,13 @@ void config_pin_esp32(){
     
 
     // Power init pins
+    power_off_leds();
+}
+
+void power_off_leds(){
     deactivate_pin(ESP_ERROR_PIN);
     deactivate_pin(ESP_LED_PIN);
     deactivate_pin(ESP_READY_PIN);
 }
-
-
 
 

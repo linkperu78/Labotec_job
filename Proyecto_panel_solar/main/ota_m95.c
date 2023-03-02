@@ -12,7 +12,9 @@ static uint8_t Rx_Buffer[ OTA_PACKET_MAX_SIZE ];
 OTA_EX_ ota_uartControl_M95(void){
   int16_t  ret = OTA_EX_OK;
   uint16_t len;
+
   ota_init();
+
   do{
       len = ota_uart_read_M95( Rx_Buffer, OTA_PACKET_MAX_SIZE );
 
@@ -23,7 +25,6 @@ OTA_EX_ ota_uartControl_M95(void){
       {
         ret = ota_flash( Rx_Buffer, len );
       }else{
-        printf("\nEEEEEEEEEEEEE\n");
         ret = OTA_EX_ERR;
       }
 

@@ -24,15 +24,15 @@
 #include <cjson.h>
 
 // Read packet timeout
-#define SENSOR_TASK_STACK_SIZE    (4096)
-#define MODEM_TASK_STACK_SIZE     (2048)
-#define SENSOR_TASK_PRIO          (10)
-#define MODEM_TASK_PRIO           (9)
-#define TIME_SLEEP 30                 // Time in "min"
-#define TAG "Saphi_sensor"           // Nombre del TAG
+#define SENSOR_TASK_STACK_SIZE          (4096)
+#define MODEM_TASK_STACK_SIZE           (2048)
+#define SENSOR_TASK_PRIO                (10)
+#define MODEM_TASK_PRIO                 (9)
+#define TIME_SLEEP 30                   // Time in "min"
+#define TAG "Agro_sensor"               // Nombre del TAG
 
-#define BUF_SIZE_MODEM (1024)
-#define RD_BUF_SIZE (BUF_SIZE_MODEM)
+#define BUF_SIZE_MODEM                  (1024)
+#define RD_BUF_SIZE                     (BUF_SIZE_MODEM)
 cJSON *doc;
 char * output;
 uint32_t current_time=0;
@@ -68,12 +68,6 @@ struct datos_modem m95 = {  .IMEI = "0", .topic="Agro_test/", .ota = "Agro_test/
                             .signal = -99, .battery = 0.00, .datos_sin_enviar=0,
                             .fecha = "01/01/23,00:00:00", .b_topic = false, .mode = 0};
 
-void power_off_gpio(){
-    deactivate_pin(ESP_ERROR_PIN);
-    deactivate_pin(ESP_LED_PIN);
-    deactivate_pin(ESP_READY_PIN);
-}
-
 void m95_config(){
 
 	// GPIO PIN CONFIGURATION
@@ -102,6 +96,7 @@ void m95_config(){
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_MODEM, &uart_config_modem));
     // Set UART pins as per KConfig settings
+
     ESP_ERROR_CHECK(uart_set_pin(uart_m95, M95_TXD, M95_RXD, M95_RTS, M95_CTS));
     // Set read timeout of UART TOUT feature
     //ESP_ERROR_CHECK(uart_set_rx_timeout(uart_m95, ECHO_READ_TOUT));
@@ -111,7 +106,7 @@ void m95_config(){
 }
 
 
-static void MODEM_event_task(void *pvParameters){
+static void M95_rx_event_task(void *pvParameters){
     uart_event_t event;
     uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
     p_RxModem = dtmp;
@@ -128,7 +123,7 @@ static void MODEM_event_task(void *pvParameters){
                         //ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
                         vTaskDelay(100/portTICK_PERIOD_MS);
                     }
-                    if(rx_modem_ready == 0){
+                    if(rx_modem_ready == 0){  
                         //printf("Event_size = %d\n",event.size);
                         uart_get_buffered_data_len(UART_MODEM,(size_t *)&ring_buff_len);
                         rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);
@@ -147,8 +142,9 @@ static void MODEM_event_task(void *pvParameters){
     vTaskDelete(NULL);
 }
 
+
 // Tarea principal donde leemos y enviamos los datos a la database
-static void rs485_task(){
+static void _main_task(){
     
     m95.signal= get_M95_signal();
     strcpy(m95.IMEI,get_M95_IMEI());
@@ -157,6 +153,7 @@ static void rs485_task(){
     strcat(m95.topic,"/db");
     strcat(m95.ota,"/OTA");
     printf("Topic direction = %s\n",m95.topic);
+
     // Allocate buffers for UART
     buffer_rs485        = (uint8_t*) malloc(BUF_SIZE_RS485);
     char* msg_mqtt   = (char*) malloc(BUF_SIZE_MODEM);
@@ -189,14 +186,17 @@ static void rs485_task(){
     activate_pin(ESP_READY_PIN);
     vTaskDelay(3000/ portTICK_PERIOD_MS);
     
+    
     // Lecutra SENSOR 1
     ESP_LOGI(TAG," Leyendo sensor 1");
     int result1 = get_sensor_n_data(1,data1,param_initial,numero_param,buffer_rs485);
-    vTaskDelay(300 / portTICK_PERIOD_MS);
+    vTaskDelay( 300 / portTICK_PERIOD_MS );
+    
     // Lectura SENSOR 2
     ESP_LOGI(TAG," Leyendo sensor 2");
     int result2 = get_sensor_n_data(2,data2,param_initial,numero_param,buffer_rs485);
-    vTaskDelay(300 / portTICK_PERIOD_MS);
+    vTaskDelay( 300 / portTICK_PERIOD_MS );
+
     // Apagamos el modulo RS485
     deactivate_pin(ESP_READY_PIN);
     activate_pin(RS485_ENABLE_PIN);
@@ -209,20 +209,20 @@ static void rs485_task(){
     }
     else{
         for(int i =0; i<numero_param; i++){
-            sprintf(string_temp,"#%.1f",(float)(data1[i]/factors[i]));
+            sprintf(string_temp,"#%.1f",(float)( data1[i] / factors[i] ));
             strcat(msg_mqtt,string_temp);
         }
     }
     strcat(msg_mqtt,"\r\n");
     if(result2 != 1){
-        for(int i =0; i<numero_param; i++){
+        for(int i = 0; i < numero_param; i++){
             sprintf(string_temp,"#%.1f",-99.9);
             strcat(msg_mqtt,string_temp);
         }
     }
     else{
-        for(int i =0; i<numero_param; i++){
-            sprintf(string_temp,"#%.1f",(float)(data2[i]/factors[i]));
+        for(int i = 0; i < numero_param; i++){
+            sprintf(string_temp,"#%.1f",(float)( data2[i] / factors[i] ));
             strcat(msg_mqtt,string_temp); 
         }
     }
@@ -254,23 +254,18 @@ static void rs485_task(){
     
 
     // Chequeamos si el OTA es requerido
-    // wake_count = M95_check_subs(m95.IMEI);
+    wake_count = M95_check_subs(m95.IMEI);
 
-    //ESP_LOGI(TAG,"\n\tEstado del ota = \" %s \"\n",(wake_count == 1 ? "Requerido":"No requerido"));
-    //disconnect_mqtt();
-
+    ESP_LOGI(TAG,"\n\tEstado del ota = \" %s \"\n",(wake_count == 1 ? "Requerido":"No requerido"));
+    disconnect_mqtt();
     deactivate_pin(WHITE_LED);
     
     // ---------------------------------------------------------------------------
     // ---------------------------------------------------------------------------
 
-    wake_count = 1;
-
     if(wake_count > 0){
         doc = cJSON_CreateObject();
-        //cJSON_AddItemToObject(doc,"imei",cJSON_CreateString(m95.IMEI));
-        // EDIT
-        cJSON_AddItemToObject(doc,"imei",cJSON_CreateString("865234067075613"));
+        cJSON_AddItemToObject(doc,"imei",cJSON_CreateString(m95.IMEI));
         cJSON_AddItemToObject(doc,"project",cJSON_CreateString("test_project"));
         cJSON_AddItemToObject(doc,"ota",cJSON_CreateString("true"));
         cJSON_AddItemToObject(doc,"cmd",cJSON_CreateString("false"));
@@ -295,13 +290,13 @@ static void rs485_task(){
     if(M95_poweroff_command()>2){
             M95_poweroff();
     };
+
     // Sleep Mode
-    
-    //free(string_temp);
+    free(string_temp);
     free(buffer_rs485);
-    //free(msg_mqtt);
+    free(msg_mqtt);
     activate_pin(RS485_ENABLE_PIN);
-    power_off_gpio();
+    power_off_leds();
 
 	gpio_hold_en(RS485_ENABLE_PIN);
     gpio_hold_en(PWRKEY_Pin);
@@ -309,13 +304,17 @@ static void rs485_task(){
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
     printf("\nSleep Mode = %d min\n",(int)(TIME_SLEEP));
     //esp_sleep_enable_timer_wakeup(TIME_SLEEP * MIN_TO_S * S_TO_US- esp_timer_get_time());
-    esp_sleep_enable_timer_wakeup(5*60 * S_TO_US);
+    esp_sleep_enable_timer_wakeup( 2 * 60 * S_TO_US );
     esp_deep_sleep_start();
 
     vTaskDelete(NULL);
 }
 
+
+
+
 void OTA_check(void){
+
   char buffer[700];
   static const char *OTA_TAG = "OTA_task";
   esp_log_level_set(OTA_TAG, ESP_LOG_INFO);
@@ -329,7 +328,7 @@ void OTA_check(void){
       if(!TCP_open()){
 		ESP_LOGI(OTA_TAG,"No se conecto al servidor\r\n");
 		TCP_close();
-		//printf("OTA:Desconectado\r\n");
+		printf("OTA:Desconectado\r\n");
 		break;
 	  }
 
@@ -346,7 +345,7 @@ void OTA_check(void){
 			
             ESP_LOGI(OTA_TAG,"Iniciando OTA");
 			//printf("Watchdog desactivado\r\n");
-			watchdog_en = 0;
+			//watchdog_en = 0;
 
 ///////// REVISAR
 			if(ota_uartControl_M95() == OTA_EX_OK){
@@ -356,16 +355,13 @@ void OTA_check(void){
 			else{
 			  debug_ota("main> OTA m95 Error...\r\n");
 			}
-			current_time = pdTICKS_TO_MS(xTaskGetTickCount())/1000;
 			watchdog_en=1;
 			printf("Watchdog reactivado\r\n");
 		}
 		ESP_LOGE("OTA ERROR","No hubo respuesta\r\n");
 	  }
-
-      vTaskDelay(5000);
 	}
-	while(!repuesta_ota&(intentos<5));
+	while(!repuesta_ota&(intentos<3));
 }
 
 void app_main(void)
@@ -390,12 +386,12 @@ void app_main(void)
         m95_config();
         rs485_config();
     }
-    wake_count = 0;
-    xTaskCreate(MODEM_event_task, "MODEM_event_task", 4096, NULL, 12, NULL);
+
+    xTaskCreate(M95_rx_event_task, "M95_rx_event_task", 4096, NULL, 12, NULL);
     
     M95_checkpower();
     printf("Estado: Configuracion de Modem M95 ...  \n");
+    
     M95_begin();
-
-    xTaskCreate(rs485_task, "rs485_task", SENSOR_TASK_STACK_SIZE, NULL, 9, NULL);
+    xTaskCreate(_main_task, "_main_task", SENSOR_TASK_STACK_SIZE, NULL, 9, NULL);
 }
