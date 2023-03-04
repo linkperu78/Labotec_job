@@ -30,13 +30,13 @@ OTA_EX_ ota_uartControl_M95(void){
 
       if( ret != OTA_EX_OK )
       {
-        //debug_ota("ota_uart> ERROR, Sending NACK\r\n");
+        debug_ota("ota_uart> ERROR, Sending NACK\r\n");
         ota_uart_send_resp_M95( OTA_NACK );
         break;
       }
       else
       {
-        //debug_ota("ota_uart> OK, Sending ACK\r\n");
+        debug_ota("ota_uart> OK, Sending ACK\r\n");
         ota_uart_send_resp_M95( OTA_ACK );
       }
 
@@ -84,7 +84,7 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
         pointer++;
 
         if(data[index] == 0xAA){
-          //debug_ota("SOF");  
+          debug_ota("SOF");  
           SOF = true;
         }
         if(SOF){
@@ -98,14 +98,13 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
       //printf("Numero index = %d\r\n",index);
 
       if(SOF){
-          //debug_ota("ota_m95> OK, data recibida -> index %d\r\n", index);
+          debug_ota("ota_m95> OK, data recibida -> index %d\r\n", index);
           break;
       }
 
       rx_modem_ready = 0;
       pointer = p_RxModem;
       len_data = 0;
-      //vTaskDelay(2);
     }
 
     // idle timeout

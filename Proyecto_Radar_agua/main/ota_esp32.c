@@ -28,7 +28,7 @@ HAL_StatusTypeDef write_data_to_flash_app( uint8_t *data,
         otaHandlerXXX = 0;
         debug_ota("BeginOTA\r\n");
         const esp_task_wdt_config_t config_wd = {
-            .timeout_ms = 35,
+            .timeout_ms = 20,
             .idle_core_mask = 0,
             .trigger_panic = false,
         };
@@ -52,7 +52,7 @@ HAL_StatusTypeDef write_data_to_flash_app( uint8_t *data,
         {
           esp_ota_end(otaHandlerXXX);
           const esp_task_wdt_config_t config_wd = {
-            .timeout_ms = 35,
+            .timeout_ms = 15,
             .idle_core_mask = 0,
             .trigger_panic = false,
           };

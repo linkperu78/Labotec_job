@@ -60,13 +60,12 @@ struct datos_modem{
     float   battery;
     int     datos_sin_enviar;
     char    fecha[30];
-    bool    b_topic;
     int     mode;       // 0 normal - 1 OTA
 };
 
-struct datos_modem m95 = {  .IMEI = "0", .topic="Agro_test/", .ota = "Agro_test/",
-                            .signal = -99, .battery = 0.00, .datos_sin_enviar=0,
-                            .fecha = "01/01/23,00:00:00", .b_topic = false, .mode = 0};
+struct datos_modem m95 = {  .IMEI = "0", .topic="Radar/", .ota = "Radar/",
+                            .signal = 99, .battery = 0.00, .datos_sin_enviar=0,
+                            .fecha = "01/01/23,00:00:00", .mode = 0};
 
 void m95_config(){
 
@@ -144,6 +143,47 @@ static void M95_rx_event_task(void *pvParameters){
 
 
 // Tarea principal donde leemos y enviamos los datos a la database
+static void _main_task(){
+    char mensaje_subs[100];
+    m95.signal= get_M95_signal();
+    strcpy(m95.IMEI,get_M95_IMEI());
+    strcat(m95.topic,m95.IMEI);
+    strcpy(m95.ota,m95.topic);
+    //strcat(m95.topic,"/altura");
+    strcat(m95.ota,"/OTA");
+    printf("Topic direction = %s\n",m95.topic);
+    
+    activate_pin(ESP_LED_PIN);
+
+    int a = connect_MQTT_server(0);
+    int _max = 0;
+    int _min = 0;
+    wake_count = m95_sub_topic(0,m95.topic,mensaje_subs);
+    printf("\n%s\n",mensaje_subs);
+    get_max_min_level(_max,_min,mensaje_subs);
+
+    // Allocate buffers for UART
+    buffer_rs485  = (uint8_t*) malloc(BUF_SIZE_RS485);
+
+    ESP_LOGI(TAG, ": Activando modulo RS485 ...  \n");
+    
+    deactivate_pin(RS485_ENABLE_PIN);
+    activate_pin( ESP_READY_PIN );
+    
+    vTaskDelay(2000/ portTICK_PERIOD_MS);
+    
+    // Lecutra SENSOR
+    for(;;){
+        float level = get_sensor_data(1, 1, buffer_rs485);
+        printf("Altura = %.2f\n",level);
+        vTaskDelay(3000/ portTICK_PERIOD_MS);
+    }
+
+    vTaskDelete(NULL);
+}
+
+
+/*
 static void _main_task(){
     
     m95.signal= get_M95_signal();
@@ -240,7 +280,7 @@ static void _main_task(){
             continue;
         }
         if(M95_PubMqtt_data((uint8_t*)msg_mqtt,m95.topic,strlen(msg_mqtt),1,0)){
-            printf("\t... Publicado\n");
+            printf("\t... Sucess\n");
             a = 1;
             deactivate_pin(ESP_ERROR_PIN);
             activate_pin(ESP_READY_PIN);
@@ -302,18 +342,14 @@ static void _main_task(){
     gpio_hold_en(PWRKEY_Pin);
     gpio_deep_sleep_hold_en();
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-
-    uint64_t _time_sleep = TIME_SLEEP * MIN_TO_S * S_TO_US - esp_timer_get_time();
-    //uint64_t _time_sleep = (int)(1.5 * 60) * S_TO_US;
-
-    float time_min = _time_sleep / (MIN_TO_S * S_TO_US);
-    printf("\nSleep Mode = %0.2f min\n", time_min);
-    esp_sleep_enable_timer_wakeup(_time_sleep);
+    printf("\nSleep Mode = %d min\n",(int)(TIME_SLEEP));
+    //esp_sleep_enable_timer_wakeup(TIME_SLEEP * MIN_TO_S * S_TO_US- esp_timer_get_time());
+    esp_sleep_enable_timer_wakeup( 2 * 60 * S_TO_US );
     esp_deep_sleep_start();
 
     vTaskDelete(NULL);
 }
-
+*/
 
 
 
@@ -351,6 +387,7 @@ void OTA_check(void){
 			//printf("Watchdog desactivado\r\n");
 			//watchdog_en = 0;
 
+///////// REVISAR
 			if(ota_uartControl_M95() == OTA_EX_OK){
 			    debug_ota("main> OTA m95 Correcto...\r\n");
                 esp_restart();    
@@ -363,8 +400,10 @@ void OTA_check(void){
 		}
 		ESP_LOGE("OTA ERROR","No hubo respuesta\r\n");
 	  }
+
+      vTaskDelay(2000);
 	}
-	while(!repuesta_ota&(intentos<3));
+	while(!repuesta_ota&(intentos<5));
 }
 
 void app_main(void)
