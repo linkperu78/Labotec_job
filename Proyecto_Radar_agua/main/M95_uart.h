@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <esp_task_wdt.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -16,9 +18,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 
-
-#include <esp_task_wdt.h>
 #include "esp_ota_ops.h"
+#include "esp32_general.h"
 
 // Definimos las funciones en la libreria
 // y nombres para pines
@@ -29,10 +30,10 @@
 #define BAUD_RATE_M95       115200
 
 // Puerto Serial N2 -> ESP / M95
-#define M95_TXD   (17)
-#define M95_RXD   (16)
-#define M95_RTS   (UART_PIN_NO_CHANGE)
-#define M95_CTS   (UART_PIN_NO_CHANGE)
+#define M95_TXD   (17)          // TX de ESP32
+#define M95_RXD   (16)          // RX de ESP32
+#define M95_RTS   (GPIO_NUM_14)
+#define M95_CTS   (GPIO_NUM_27)
 
 
 extern uint8_t rx_modem_ready;
@@ -40,8 +41,8 @@ extern bool ota_debug;
 extern int rxBytesModem;
 extern uint8_t * p_RxModem;
 
-
-//void m95_config();
+//
+void m95_config();
 
 // Funcion con formato para envio de comandos AT
 int sendAT(char *Mensaje, char *ok, char *error, uint32_t timeout, char *respuesta);
@@ -60,7 +61,7 @@ int M95_CheckConnection();
 void M95_checkpower();
 // Publicamos la data deseada en el broker
 char* get_m95_date();
-bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpconnectID, int retain);
+bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpconnectID);
 char* get_M95_IMEI();
 // Actualizamos la hora interna del ESP
 void M95_epoch(time_t * epoch);
@@ -83,5 +84,7 @@ void TCP_close();
 uint8_t OTA(uint8_t *buff, uint8_t *inicio, uint8_t *fin, uint32_t len);
 void reiniciar();
 int m95_sub_topic(int ID, char* topic_name, char* response);
-void get_max_min_level(int max_value, int min_value, char* mensaje);
+
+
+
 #endif /* INC_CS_RS485 */

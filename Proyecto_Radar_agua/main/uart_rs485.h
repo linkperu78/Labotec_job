@@ -18,17 +18,18 @@
 #define UART_RS485          UART_NUM_1
 
 // Puerto Serial N1 -> UART a RS485
-#define RS485_TXD           GPIO_NUM_2   
-#define RS485_RXD           GPIO_NUM_13
-#define BAUD_RATE_RS485     9600
-//#define BAUD_RATE_RS485     4800  // Defecto baudrate = 4800
+#define RS485_TXD           GPIO_NUM_4      
+#define RS485_RXD           GPIO_NUM_15 
 
 // RTS for RS485 Half-Duplex Mode manages DE/~RE
-#define RS485_ENABLE_PIN    GPIO_NUM_12
-#define RS485_RTS           GPIO_NUM_15
+#define RS485_ENABLE_PIN    GPIO_NUM_22
+#define RS485_RTS           GPIO_NUM_2
+
+//#define BAUD_RATE_RS485     4800  // Defecto baudrate = 4800
+#define BAUD_RATE_RS485     9600
 
 // CTS is not used in RS485 Half-Duplex Mode
-#define RS485_CTS           UART_PIN_NO_CHANGE
+#define RS485_CTS           GPIO_NUM_23         // Seleccione un PIN que no este en uso
 
 
 void rs485_config();
