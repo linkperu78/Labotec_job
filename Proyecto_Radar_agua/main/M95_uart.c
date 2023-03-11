@@ -294,7 +294,7 @@ int connect_MQTT_server(int id){
 	char respuesta_esperada[30];
 	sprintf(commando_M95,"AT+QMTOPEN=%d,\"%s\",1883\r\n",id,ip_MQTT);
 	sprintf(respuesta_esperada,"+QMTOPEN: %d,0",id);
-	printf("\n- Connect = %s\n",commando_M95);
+	//printf("\n- Connect = %s\n",commando_M95);
 
 	if(sendAT(commando_M95,respuesta_esperada,"ERROR",5000,M95_buffer) != 1){
 		ESP_LOGE("QMTOPEN","Bad Syntaxis");
@@ -316,9 +316,7 @@ int connect_MQTT_server(int id){
 	return a;
 }
 
-int M95_CheckConnection(){
-	deactivate_pin(LED_READY);
-	vTaskDelay(2500 / portTICK_PERIOD_MS);	
+int M95_CheckConnection(){	
 	return connect_MQTT_server(0);
 }
 

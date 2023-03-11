@@ -38,7 +38,7 @@ float byte_to_int_rs485(uint8_t *bytes_t);
 int send_command(uint8_t *command, int length, bool enable_checksum);
 void copy_bytes(const uint8_t* source, uint8_t* destiny, size_t len);
 int get_sensor_n_data(int sensor_id,float* output, int data_i, int data_f, uint8_t* buffer);
-float get_sensor_data(int sensor_id, int index_data, uint8_t* buffer);
+float get_sensor_data_rs485(int sensor_id, int index_data, uint8_t* buffer);
 
 //--------------------------------------------------
 #endif // __RS485_ESP32_

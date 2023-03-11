@@ -217,7 +217,7 @@ int get_sensor_n_data(int sensor_id, float* output, int data_i, int data_n, uint
     return 1;
 }
 
-float get_sensor_data(int sensor_id, int index_data, uint8_t* buffer){
+float get_sensor_data_rs485(int sensor_id, int index_data, uint8_t* buffer){
     uint8_t value[2] = {0x00 , 0x00};
     uint8_t msg_485[6] = {  (uint8_t)sensor_id, 0x03, 0x00, 
                             (uint8_t)index_data, 0x00, 0x01};
