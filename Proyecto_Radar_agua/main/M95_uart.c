@@ -204,6 +204,7 @@ int get_M95_signal(){
 		p_clock=strtok(NULL,lim);
 	}
 	p_clock=strtok(NULL,lim);
+
 	return atoi(p_clock);
 }
 
@@ -218,19 +219,19 @@ bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpc
 	//printf("Pub_msg=\n%s\n",commando_M95);
 	
 	sendAT(commando_M95,">","ERROR",1000,M95_buffer);
-	vTaskDelay(100);
+	vTaskDelay(10);
 
 	uart_write_bytes(UART_MODEM,data,data_len);
+	debug = 1;
 	k = readAT("+QMT","ERROR\r\n",5000,M95_buffer);
-	
+	debug = 0;
 	if(k == 0) return 0;
-
 	return 1;
 }
 
 uint8_t M95_begin(){
     int bandera=5;
-	debug = 1;
+	debug = 0;
 
 	// Disable local echo mode			
 	sendAT("ATE0\r\n","OK\r\n","ERROR\r\n",5000,M95_buffer);		
@@ -255,7 +256,7 @@ uint8_t M95_begin(){
 	vTaskDelay(500 / portTICK_PERIOD_MS);
 
 	// Signal Quality - .+CSQ: 6,0  muy bajo
-	sendAT("AT+CSQ\r\n","CSQ\r\n","ERROR\r\n", 300,M95_buffer);
+	sendAT("AT+CSQ\r\n","CSQ","ERROR\r\n", 300,M95_buffer);
 	vTaskDelay(200 / portTICK_PERIOD_MS);
 
 	// Network Registration Status	
@@ -381,14 +382,11 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 		activate_pin( LED_UART_BLINK );
 		vTaskDelay(100 / portTICK_PERIOD_MS);
 		deactivate_pin( LED_UART_BLINK );
-		vTaskDelay(100 / portTICK_PERIOD_MS);
-		printf("Request Command =\n\t%s",command);
 	}
-
+	vTaskDelay(100 / portTICK_PERIOD_MS);
+	printf("Request Command =\n\t%s",command);
 	uart_flush(UART_MODEM);
 	rx_modem_ready = 0;
-
-	//ESP_LOGI("M95","Commando:\n%s\n",command);
 	
 	uart_write_bytes(UART_MODEM, (uint8_t *)command, strlen(command));
 	while((esp_timer_get_time() - actual_time_M95) < idle_time_m95){
@@ -396,31 +394,34 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 			vTaskDelay(2);
 			continue;
 		}
-		
-		if (strstr((char *)p_RxModem,ok)!= NULL){
-			if(debug == 1) printf(" ...Sucessful\n");    
+		if (strstr((char *)p_RxModem,ok)!= NULL){  
+			if(debug == 1) printf(" ... Sucessful\n");    
 			_timeout = false;
 			_error = false;
 			break;
 		}
 		else if(strstr((char *)p_RxModem,error)!= NULL){
-			if(debug == 1) printf(" ...Error\n");
+			if(debug == 1) printf(" ... Error\n");
 			_timeout = false;
 			_error = true;
 			break;
 		}
+		vTaskDelay( 3 / portTICK_PERIOD_MS );
 		rx_modem_ready = 0;
-		vTaskDelay(20);
 	}
 
-	//ESP_LOGE("M95","Say:\n%s\n",(char *)p_RxModem);
 
     if(_timeout){
 		printf("- M95 not responded\n");
         return 0;
     }
 
-	memcpy(response,p_RxModem,rxBytesModem);
+	//memcpy(response,p_RxModem,rxBytesModem);
+	strcpy(response,(char*)p_RxModem);
+
+	if( debug == 1 ){
+		printf("Rpta:\n%s\n",response);
+	}
 
 	if(!_error){
 		return 1;
@@ -431,7 +432,7 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 
 int readAT(char *ok, char *error, uint32_t timeout, char *response)
 {
-	memset(response, '\0',strlen(response));
+	//memset(response, '\0',strlen(response));
 	int correcto = 0;
 	bool _timeout = true;
 
@@ -442,7 +443,7 @@ int readAT(char *ok, char *error, uint32_t timeout, char *response)
 
 	while((esp_timer_get_time() - actual_time_M95) < idle_time_m95){
 		if(rx_modem_ready == 0){
-			vTaskDelay(1);
+			vTaskDelay( 1 / portTICK_PERIOD_MS );
 			continue;
 		}
 		if (strstr((char *)p_RxModem,ok) != NULL){
@@ -455,8 +456,8 @@ int readAT(char *ok, char *error, uint32_t timeout, char *response)
 			_timeout = false;
 			break;
 		}
+		vTaskDelay( 3 / portTICK_PERIOD_MS );
 		rx_modem_ready = 0;
-		vTaskDelay(20);
 	}	
 
     if(_timeout){
@@ -464,8 +465,8 @@ int readAT(char *ok, char *error, uint32_t timeout, char *response)
         return 0;
     }
 
-	memcpy(response,p_RxModem,rxBytesModem);
-
+	//memcpy(response,p_RxModem,rxBytesModem);
+	strcpy(response,(char*)p_RxModem);
 	if(debug==1){
 		printf(response);
 		printf("\r\n");

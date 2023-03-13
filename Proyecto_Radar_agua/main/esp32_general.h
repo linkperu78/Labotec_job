@@ -22,9 +22,8 @@
 #define LED_READY           GREEN_LED
 #define LED_UART_BLINK      WHITE_LED
 
+#define PIN1_ADC            ADC1_CHANNEL_4
 
-#define BATERY_LEVEL        GPIO_NUM_32
-#define ESP_BAT_PIN         BATERY_LEVEL
 
 #define BUF_SIZE 			(512)
 #define BUF_SIZE_RS485      100

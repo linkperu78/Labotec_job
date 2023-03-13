@@ -76,20 +76,21 @@ float get_json_value(const char *json_string, const char *char_find, float def, 
   }
 
   *sucess = 1;
-  printf("Resultado = %s se detecto el valor\n",(*sucess == 1? "SI":"NO"));
+  //printf("Resultado = %s se detecto el valor\n",(*sucess == 1? "SI":"NO"));
   return atof(value);
 } 
 
 float read_battery(){
     int value_bat   	= 0;
-    float repeat      	= 8.0;
-    float _factor   	= 0.081;
-    float _offset   	= 150.47;
+    int adc_raw       = 0;
+    int repeat        = 4;
+    float _factor   	= 3.23;
+    float _offset   	= 0.0;
 	for(int i = 0; i < repeat; i++){
-        value_bat += adc1_get_raw(ADC1_CHANNEL_4);
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        value_bat += adc1_get_raw(PIN1_ADC);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
-    float raw_volt = (float)value_bat/repeat;
+    float raw_volt = (float)value_bat/(float)repeat;
     return (raw_volt*_factor + _offset)/100;
 }
 
@@ -108,7 +109,7 @@ void config_pin_esp32(){
 
     // Battery_level
     ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_DEFAULT));
-    ESP_ERROR_CHECK(adc1_config_channel_atten(ADC1_CHANNEL_4, ADC_ATTEN_DB_11));    // 3.9 V range
+    ESP_ERROR_CHECK(adc1_config_channel_atten(PIN1_ADC, ADC_ATTEN_DB_2_5));    // 3.9 V range
     
 
     // Power init pins
