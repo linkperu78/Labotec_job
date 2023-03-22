@@ -14,11 +14,11 @@ OTA_EX_ ota_uartControl_M95(void){
   uint16_t len;
 
   ota_init();
-
+  
   do{
       len = ota_uart_read_M95( Rx_Buffer, OTA_PACKET_MAX_SIZE );
+      printf("len OTA = %d\n",len);
 
-      //printf("len = %d\n",len);
       ota_debug = false;
 
       if( len != 0u )
@@ -54,26 +54,31 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
   //uint16_t data_len;
 
   uint64_t timeout = esp_timer_get_time();
-  uint64_t idle_timeout = esp_timer_get_time();
+  //uint64_t idle_timeout = esp_timer_get_time();
   bool SOF = false;
 
   size_t len_data = 0;
   rx_modem_ready = 0;
-  uint8_t * pointer = p_RxModem;
+
+  uint8_t* pointer = p_RxModem;
 
   while(true){
     // timeout general
+    
     if( ( esp_timer_get_time() - timeout ) / 1000 > 25000 ){
       ESP_LOGE("OTA_ERROR","timeout index=%d\r\n", index);
       return 0;
     }
-
-    if((rx_modem_ready == 1) && (rxBytesModem != 0)){
-      //debug_ota("data recibida : %d bytes",rxBytesModem);
+    //if((rx_modem_ready == 1) && (rxBytesModem != 0)){
+    if( rx_modem_ready == 1 ){
+      //debug_ota("OTA data recibida : %d bytes",rxBytesModem);
       len_data = rxBytesModem;
+      pointer = p_RxModem;
+      //memcpy(pointer,p_RxModem,len_data);
     }
     
-    if(len_data != 0){        
+    if( len_data != 0 ){
+      //printf("SE RECIBIO: %d bytes\n",len_data);        
       for (size_t i = 0; i < len_data; i++)
       {
         if(index >= OTA_PACKET_MAX_SIZE+2){
@@ -84,29 +89,25 @@ uint16_t ota_uart_read_M95( uint8_t *data, uint16_t max_len){
         pointer++;
 
         if(data[index] == 0xAA){
-          debug_ota("SOF");  
+          //debug_ota("SOF");  
           SOF = true;
         }
         if(SOF){
           index = index+1;
         }
-
-        idle_timeout = esp_timer_get_time();
+        //idle_timeout = esp_timer_get_time();
       }
-
-
       //printf("Numero index = %d\r\n",index);
-
       if(SOF){
           debug_ota("ota_m95> OK, data recibida -> index %d\r\n", index);
           break;
       }
+      //vTaskDelay( 3 / portTICK_PERIOD_MS );  // TODO : CHECK WITH THIS DELAY FOR WATCHDOG
 
-      rx_modem_ready = 0;
-      pointer = p_RxModem;
-      len_data = 0;
     }
-
+    rx_modem_ready = 0;
+    len_data = 0;
+    vTaskDelay(10 / portTICK_PERIOD_MS );
     // idle timeout
     // if ( (index > 3) && (esp_timer_get_time()/1000 - idle_timeout > 500) ){
     //   debug_ota("ota_uart> OK, data recibida -> index %d\r\n", index);

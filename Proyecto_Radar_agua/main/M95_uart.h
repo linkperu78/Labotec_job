@@ -83,8 +83,9 @@ uint8_t TCP_send(char *msg, uint8_t len);
 void TCP_close();
 uint8_t OTA(uint8_t *buff, uint8_t *inicio, uint8_t *fin, uint32_t len);
 void reiniciar();
-int m95_sub_topic(int ID, char* topic_name, char* response);
-
+int m95_sub_topic_json(int ID, char* topic_name, char* response);
+int m95_sub_topic_OTA(int ID, char* topic_OTA, char* response);
+void m95_unsub_topic(int ID, char* topic_name);
 
 
 #endif /* INC_CS_RS485 */

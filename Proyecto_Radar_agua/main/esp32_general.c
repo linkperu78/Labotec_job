@@ -91,7 +91,7 @@ float read_battery(){
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     float raw_volt = (float)value_bat/(float)repeat;
-    return (raw_volt*_factor + _offset)/100;
+    return (raw_volt*_factor + _offset)/1000;
 }
 
 void config_pin_esp32(){

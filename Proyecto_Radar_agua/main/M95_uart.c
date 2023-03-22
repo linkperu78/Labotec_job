@@ -222,10 +222,8 @@ bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpc
 	vTaskDelay(10);
 
 	uart_write_bytes(UART_MODEM,data,data_len);
-	debug = 1;
 	k = readAT("+QMT","ERROR\r\n",5000,M95_buffer);
-	debug = 0;
-	if(k == 0) return 0;
+	if(k != 1) return 0;
 	return 1;
 }
 
@@ -297,7 +295,7 @@ int connect_MQTT_server(int id){
 	sprintf(respuesta_esperada,"+QMTOPEN: %d,0",id);
 	//printf("\n- Connect = %s\n",commando_M95);
 
-	if(sendAT(commando_M95,respuesta_esperada,"ERROR",5000,M95_buffer) != 1){
+	if(sendAT(commando_M95,respuesta_esperada,"ERROR",10000,M95_buffer) != 1){
 		ESP_LOGE("QMTOPEN","Bad Syntaxis");
 		return 0;
 	}
@@ -309,7 +307,7 @@ int connect_MQTT_server(int id){
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     // Connect with name "M95" to Broker
-	sprintf(commando_M95,"AT+QMTCONN=%d,\"Id_1\"\r\n",id);
+	sprintf(commando_M95,"AT+QMTCONN=%d,\"Radar_1\"\r\n",id);
 	sprintf(respuesta_esperada,"+QMTCONN: %d,0",id);
 
 	int a = sendAT(commando_M95,respuesta_esperada,"ERROR\r\n",5000,M95_buffer);
@@ -321,11 +319,9 @@ int M95_CheckConnection(){
 	return connect_MQTT_server(0);
 }
 
-int m95_sub_topic(int ID, char* topic_name, char* response){
+int m95_sub_topic_json(int ID, char* topic_name, char* response){
 	sprintf(commando_M95,"AT+QMTSUB=%d,2,\"%s\",0\r\n",ID,topic_name);
-
-	int success = 0;
-	
+	int success = 0;	
 	if(sendAT(commando_M95,"+QMTRECV:","ERROR\r\n",10000,M95_buffer) == 1){
 		success = 1;
 	}
@@ -351,6 +347,42 @@ int m95_sub_topic(int ID, char* topic_name, char* response){
 	return 1;
 }
 
+int m95_sub_topic_OTA(int ID, char* topic_OTA, char* response){
+
+	sprintf(commando_M95,"AT+QMTSUB=%d,2,\"%s\",0\r\n",ID,topic_OTA);
+	int success = 0;	
+	if(sendAT(commando_M95,"+QMTRECV:","ERROR\r\n",10000,M95_buffer) == 1){
+		success = 1;
+	}
+	if(success == 0){
+		deactivate_pin(LED_READY);
+		ESP_LOGE("Suscripcion","No se recibio respuesta del topico:\n%s\n",topic_OTA);
+		return -1;
+	}
+
+	char lim[2] = ",";
+	char * p_clock = strtok((char*)M95_buffer,lim);
+	//printf("Iteracion = |%s|\n",p_clock);
+	
+	while(p_clock != NULL){
+		if(strstr(p_clock,"OTA")!= NULL){
+			p_clock=strtok(NULL,lim);
+			break;
+		}
+		p_clock=strtok(NULL,lim);
+		//printf("Iteracion = |%s|\n",p_clock);
+	}
+	//printf("Resultado =\n%s\n",p_clock);
+	strcpy(response,p_clock);
+	return 1;
+}
+
+
+void m95_unsub_topic(int ID, char* topic_name){
+	sprintf(commando_M95,"AT+QMTUNS=%d,3,\"%s\"",ID,topic_name);
+	sendAT(commando_M95,"+QMTUNS:","ERROR\r\n",7000,M95_buffer);
+}
+
 char* get_m95_date(){
 	int a = sendAT("AT+CCLK?\r\n","+CCLK: ","ERROR",1000,M95_buffer);
 	if( a != 1){
@@ -371,48 +403,36 @@ char* get_m95_date(){
 int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *response)
 {
 	memset(response, '\0',strlen(response));
-	bool _timeout = true;
+	uint8_t send_resultado = 0;
 	//Define "UART_MODEM" in program (i.e. #define UART_MODEM UART_NUM_2)
 	actual_time_M95 = esp_timer_get_time();
 	idle_time_m95 = (uint64_t)(timeout*1000);
-	
-	bool _error = false;
 
-	if(debug == 1){
-		activate_pin( LED_UART_BLINK );
-		vTaskDelay(100 / portTICK_PERIOD_MS);
-		deactivate_pin( LED_UART_BLINK );
-	}
-	vTaskDelay(100 / portTICK_PERIOD_MS);
-	printf("Request Command =\n\t%s",command);
-	uart_flush(UART_MODEM);
+	//debug = 1;
+
+	printf("\nSend AT esperando: %lu ms\n",timeout);
 	rx_modem_ready = 0;
-	
 	uart_write_bytes(UART_MODEM, (uint8_t *)command, strlen(command));
-	while((esp_timer_get_time() - actual_time_M95) < idle_time_m95){
-		if(rx_modem_ready == 0){
-			vTaskDelay(2);
+
+	while( ( esp_timer_get_time() - actual_time_M95 ) < idle_time_m95 ){
+		if( rx_modem_ready == 0 ){
+			vTaskDelay( 10 / portTICK_PERIOD_MS );
 			continue;
 		}
-		if (strstr((char *)p_RxModem,ok)!= NULL){  
-			if(debug == 1) printf(" ... Sucessful\n");    
-			_timeout = false;
-			_error = false;
+		if ( strstr((char *)p_RxModem,ok) != NULL ){
+			send_resultado = 1;     
 			break;
 		}
-		else if(strstr((char *)p_RxModem,error)!= NULL){
-			if(debug == 1) printf(" ... Error\n");
-			_timeout = false;
-			_error = true;
+		else if( strstr((char *)p_RxModem,error) != NULL ){
+			send_resultado = 2;
 			break;
 		}
-		vTaskDelay( 3 / portTICK_PERIOD_MS );
 		rx_modem_ready = 0;
 	}
 
 
-    if(_timeout){
-		printf("- M95 not responded\n");
+    if( send_resultado == 0 ){
+		ESP_LOGE("M95 error","\nTIMEOUT\n");
         return 0;
     }
 
@@ -420,14 +440,15 @@ int sendAT(char *command, char *ok, char *error, uint32_t timeout, char *respons
 	strcpy(response,(char*)p_RxModem);
 
 	if( debug == 1 ){
-		printf("Rpta:\n%s\n",response);
+		ESP_LOGI("M95_tag","%s\n",command);
+		if(send_resultado == 1){
+			ESP_LOGI("M95 sucess","\n[%s]\n",response);
+		}
+		else {
+			ESP_LOGE("M95 error","\n[%s]\n",response);
+		}
 	}
-
-	if(!_error){
-		return 1;
-	}
-
-	return 99;
+	return send_resultado;
 }
 
 int readAT(char *ok, char *error, uint32_t timeout, char *response)
@@ -456,7 +477,7 @@ int readAT(char *ok, char *error, uint32_t timeout, char *response)
 			_timeout = false;
 			break;
 		}
-		vTaskDelay( 3 / portTICK_PERIOD_MS );
+		vTaskDelay( 5 / portTICK_PERIOD_MS );
 		rx_modem_ready = 0;
 	}	
 
@@ -481,6 +502,8 @@ void disconnect_mqtt(){
 	sendAT("AT+QMTCLOSE=0\r\n","OK\r\n","ERROR\r\n", 1000,M95_buffer);
 	vTaskDelay(1000/portTICK_PERIOD_MS);
 }
+
+
 
 /*
 uint8_t OTA(uint8_t *buff, uint8_t *inicio, uint8_t *fin, uint32_t len){
@@ -613,8 +636,8 @@ uint8_t TCP_send(char *msg, uint8_t len){
 
     uint8_t temporal = 0;
 
-	//debug = 0;
-	debug = 1;
+	debug = 0;
+	//debug = 1;
 
     temporal = sendAT("AT+QISEND\r\n",">","ERROR\r\n",25500,M95_buffer);
     if(temporal != 1){ 

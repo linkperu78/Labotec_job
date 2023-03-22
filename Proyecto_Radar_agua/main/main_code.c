@@ -25,7 +25,7 @@
 #define MODEM_TASK_STACK_SIZE           (2048)
 #define SENSOR_TASK_PRIO                (10)
 #define MODEM_TASK_PRIO                 (9)
-#define TIME_SLEEP                      2                   // Time in "min"
+#define TIME_SLEEP                      5                   // Time in "min"
 #define TAG                             "Radar/"        // Nombre del TAG
 
 #define BUF_SIZE_MODEM                  (1024)
@@ -47,11 +47,11 @@ static QueueHandle_t uart_modem_queue;
 int rxBytesModem;
 
 int wake_count;
+int flag_event_serial = 0;
 
 uint8_t rx_modem_ready;
 uint8_t * p_RxModem;
 bool ota_debug = false;
-int debug_readAT;
 
 void OTA_check(void);
 void init_project_config();
@@ -93,20 +93,15 @@ static void M95_rx_event_task(void *pvParameters){
             }
             switch(event.type) {
                 case UART_DATA:
-                    //ESP_LOGI("UART TASK","Event_size = %d and rx = %d\n",event.size,rx_modem_ready);
+
                     if(event.size >= 120){
-                        //ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
+                        ESP_LOGI(TAG, "OVER [UART DATA]: %d", event.size);
                         vTaskDelay(100/portTICK_PERIOD_MS);
                     }
                     if(rx_modem_ready == 0){
                         bzero(dtmp, RD_BUF_SIZE);
                         uart_get_buffered_data_len(UART_MODEM,(size_t *)&ring_buff_len);
-                        rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);
-                        /*/
-                        if(debug_readAT > 0){
-                            ESP_LOGI("UART TASK","\nbuffer rx =\n%s\n",(char *)dtmp);
-                        }
-                        */
+                        rxBytesModem = uart_read_bytes(UART_MODEM,dtmp,ring_buff_len,0);                        
                         rx_modem_ready = 1;
                     }
                     break;
@@ -161,7 +156,7 @@ static void _main_task(){
     deactivate_pin(RS485_ENABLE_PIN);
 
     // Actualizamos el valor del max y min de los niveles
-    wake_count = m95_sub_topic(0,m95.topic,mensaje_recv);
+    wake_count = m95_sub_topic_json(0,m95.topic,mensaje_recv);
 
     int sucess_parse = 0;
     _max = get_json_value(mensaje_recv,"max",_max_level_sleep, &sucess_parse);
@@ -177,15 +172,16 @@ static void _main_task(){
     }
 
     printf("MAX = %.2f - MIN = %.2f\n",_max,_min);
+    //m95_unsub_topic(0,m95.topic);
+
     // ------------------ Lecutra SENSOR ---------------------------
     level = get_sensor_data_rs485(1, 1, buffer_rs485);
     sprintf(mensaje_recv,"%s\r\nS=%d,L=%.2f,V=%.2f",m95.fecha,m95.signal,level,m95.battery);
     ESP_LOGI("PUB MQTT","Mensaje a publicar:\n%s\n",mensaje_recv);
+    
     strcat(m95.topic,"/altura");        // EN Radar/IMEI#/ se setearan los valores
                                         // max y min en formato json
     // Publicamos el valor leido
-    debug_readAT = 1;
-
     for(int m=0; m<3; m++){
         if( M95_PubMqtt_data((uint8_t*)mensaje_recv,m95.topic,strlen(mensaje_recv),0) ){
             printf("\t... PUBLICADO \n");
@@ -193,13 +189,12 @@ static void _main_task(){
         }
         activate_pin(LED_UART_BLINK);
         activate_pin(LED_READY);
-        vTaskDelay( 1500 / portTICK_PERIOD_MS );
+        vTaskDelay( 500 / portTICK_PERIOD_MS );
         deactivate_pin(LED_UART_BLINK);
         deactivate_pin(LED_READY);
-        vTaskDelay( 1500 / portTICK_PERIOD_MS );
+        vTaskDelay( 500 / portTICK_PERIOD_MS );
         M95_CheckConnection();
     }
-    debug_readAT = 0;
     activate_pin(RS485_ENABLE_PIN);
 
     // Evaluamos el valor de la altura
@@ -218,10 +213,8 @@ static void _main_task(){
         gpio_set_level(OUT_LED,0);
     }
     
-    /*
     // Chequeamos si el OTA es requerido
-    wake_count = m95_sub_topic(0,m95.ota,mensaje_recv);
-    printf(" - OTA Resultado = %s\n",mensaje_recv);
+    wake_count = m95_sub_topic_OTA(0,m95.ota,mensaje_recv);
     if( wake_count == 1){
         wake_count = 0;
         if(strstr(mensaje_recv,"1")){
@@ -230,10 +223,10 @@ static void _main_task(){
     }
     ESP_LOGI(TAG,"\n\tEstado del ota = \" %s \"\n",(wake_count == 1 ? "Requerido":"No requerido"));
     deactivate_pin(WHITE_LED);
-    
-    // ---------------------------------------------------------------------------
-    // ---------------------------------------------------------------------------
+    disconnect_mqtt();
 
+    // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
     if(wake_count == 1){
         doc = cJSON_CreateObject();
         cJSON_AddItemToObject(doc,"imei",cJSON_CreateString(m95.IMEI));
@@ -255,9 +248,7 @@ static void _main_task(){
         }while(false);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-    */
 
-    disconnect_mqtt();
     ESP_LOGI(TAG,"Apagando Modem y pines\n");
     if( M95_poweroff_command() > 2 ){
             M95_poweroff();
@@ -268,17 +259,21 @@ static void _main_task(){
     free(mensaje_recv);
     free(buffer_rs485);
 
-    uint64_t _time_sleep = TIME_SLEEP * MIN_TO_S * S_TO_US - esp_timer_get_time();
+    int64_t _time_sleep = TIME_SLEEP * MIN_TO_S * S_TO_US - (int64_t)esp_timer_get_time();
+    if(_time_sleep < (1 * S_TO_US) ){
+        _time_sleep = 1 * S_TO_US;
+    }
     //uint64_t _time_sleep = (int)(3 * 60) * S_TO_US;
-    float time_min = _time_sleep / (S_TO_US);
-    printf("\nSleep Mode = %0.2f min\n", (float)(time_min/60.0));
+    int time_sec = _time_sleep / (S_TO_US);
+    int time_min = time_sec / 60 ;
+    time_sec = time_sec - time_min * 60;
+    printf("\nSleep Mode = %d min y %d sec\n", time_min,time_sec);
 
     // Si la alarma esta encendida hacemos un light_sleep mode
     // donde podamos recibir interrupcion y leer el tiempo que ha pasado
     if(mode_light_sleep){
         // Terminamos la tarea de uart m95
         end_task_uart_m95 = 1;
-
         // Configuramos los metodos para despertar al ESP32
         uint64_t time_before_sleep = esp_timer_get_time();      // Obtenemos el tiempo antes de dormir
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
@@ -292,15 +287,15 @@ static void _main_task(){
         esp_light_sleep_start();        // Funcion para dormir el ESP32 en modo ligero
 
         int64_t remain_time_sleep = _time_sleep + time_before_sleep - esp_timer_get_time();
+        ESP_LOGI("Sleep","Quedaban %llu segundos para despertar\n",( remain_time_sleep / S_TO_US ) );
         if( remain_time_sleep < 200000){
             printf("Desperte por timer, reiniciando ... \n");
             esp_restart();
         }
-        ESP_LOGI("Sleep","Quedaban %llu segundos para despertar\n",( remain_time_sleep / S_TO_US ) );
         printf("Desperte por interrupccion ... \n");
         gpio_set_level(OUT_ALARM,0);
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-        esp_sleep_enable_timer_wakeup((uint64_t)remain_time_sleep);
+        _time_sleep = remain_time_sleep;
     }
 
     gpio_hold_en(RS485_ENABLE_PIN);
@@ -318,6 +313,7 @@ static void _main_task(){
 
 void OTA_check(void){
   char buffer[700];
+
   static const char *OTA_TAG = "OTA_task";
   esp_log_level_set(OTA_TAG, ESP_LOG_INFO);
 
@@ -333,7 +329,7 @@ void OTA_check(void){
 		printf("OTA:Desconectado\r\n");
 		break;
 	  }
-
+         
 	  ESP_LOGI(OTA_TAG,"Solicitando actualizacion...\r\n");
 	  if(TCP_send(output, strlen(output))){                           // 1. Se envia la info del dispositivo
 		
@@ -344,12 +340,8 @@ void OTA_check(void){
 
 		if(strstr(buffer,"\"ota\": \"true\"") != 0x00  ){
             repuesta_ota = true;
-			
             ESP_LOGI(OTA_TAG,"Iniciando OTA");
-			//printf("Watchdog desactivado\r\n");
-			//watchdog_en = 0;
 
-///////// REVISAR
 			if(ota_uartControl_M95() == OTA_EX_OK){
 			    debug_ota("main> OTA m95 Correcto...\r\n");
                 esp_restart();    
@@ -371,7 +363,6 @@ void app_main(void)
 {
     printf("---- Iniciando programa ... \n");
     end_task_uart_m95 = 0;
-    debug_readAT = 0;
     esp_sleep_wakeup_cause_t wakeup_reason;
     wakeup_reason = esp_sleep_get_wakeup_cause();
     switch(wakeup_reason){
@@ -398,7 +389,7 @@ void app_main(void)
     // ---------------------------------------------------------------
     ESP_LOGI(TAG,"Configuracion Finalizada\n");
     ESP_LOGI(TAG,"Iniciando tarea \n");
-    xTaskCreate(_main_task, "_main_task", SENSOR_TASK_STACK_SIZE, NULL, 9, NULL);
+    xTaskCreate(_main_task, "_main_task", SENSOR_TASK_STACK_SIZE, NULL, 15, NULL);
 }
 
 void init_project_config(){
