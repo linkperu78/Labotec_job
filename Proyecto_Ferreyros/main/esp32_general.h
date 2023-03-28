@@ -7,17 +7,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_sleep.h"
+#include "driver/adc.h"
+#include "esp_adc_cal.h"
+
 
 #define GREEN_LED           GPIO_NUM_25
 #define WHITE_LED           GPIO_NUM_26
 
 #define LED_READY           GREEN_LED
 #define LED_UART_BLINK      WHITE_LED
+
+#define PIN1_ADC            ADC1_CHANNEL_4
+
+
+#define BUF_SIZE 			(512)
+#define BUF_SIZE_RS485      100
+#define PACKET_READ_TICS 	(100 / portTICK_PERIOD_MS)
 
 // Timeout threshold for UART = number of symbols (~10 tics) with unchanged state on receive pin
 #define ECHO_READ_TOUT      (3)         // 3.5T * 8 = 28 ticks, TOUT=3 -> ~24..33 ticks
@@ -32,9 +42,18 @@ void activate_pin(int pin_number);
 void deactivate_pin(int pin_number);
 
 // Configuracion del ESP32
-void config_pin_leds();
+void config_pin_esp32();
 
 // Apagamos los leds
 void power_off_leds();
+
+// Obtenemos el tamaño de un string
+int get_length(const char* str);
+
+// Obtenemos el valor del json asociado segun la llave
+float get_json_value(const char *json_string, const char *char_find,float def, int *sucess);
+
+// Leemos el valor de la bateria
+float read_battery();
 //--------------------------------------------------
 #endif /* __GENERAL_ESP32_ */

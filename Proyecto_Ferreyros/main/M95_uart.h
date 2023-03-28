@@ -13,11 +13,13 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_sleep.h"
+#include "driver/adc.h"
+#include "esp_adc_cal.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 
+#include "esp_ota_ops.h"
 #include "esp32_general.h"
-#include "credenciales.h"
 
 // Definimos las funciones en la libreria
 // y nombres para pines
@@ -52,17 +54,14 @@ void M95_pwron();
 
 // Configuramos los estados iniciales del M95
 uint8_t M95_begin();
-//
 int connect_MQTT_server(int id);
+
 // Verificamos la conexion con el ESP y M95
 int M95_CheckConnection();
-//
 void M95_checkpower();
 // Publicamos la data deseada en el broker
 char* get_m95_date();
-//
 bool M95_PubMqtt_data(uint8_t * data,char * topic,uint16_t data_len,uint8_t tcpconnectID);
-//
 char* get_M95_IMEI();
 // Actualizamos la hora interna del ESP
 void M95_epoch(time_t * epoch);
@@ -72,19 +71,21 @@ void M95_reset();
 void M95_watchdog();
 // Podemos hacer blink en el pin PWRKEY del ESP
 void M95_poweroff();
-//
 int M95_poweroff_command();
-//
 void disconnect_mqtt();
-//
 int get_M95_signal();
-//
+char M95_readSMS(char*);
+void M95_sendSMS(char *mensaje, char *numero);
+
 int readAT(char *ok, char *error, uint32_t timeout, char *response);
-//
 uint8_t TCP_open();
-//
 uint8_t TCP_send(char *msg, uint8_t len);
-//
 void TCP_close();
+uint8_t OTA(uint8_t *buff, uint8_t *inicio, uint8_t *fin, uint32_t len);
+void reiniciar();
+int m95_sub_topic_json(int ID, char* topic_name, char* response);
+int m95_sub_topic_OTA(int ID, char* topic_OTA, char* response);
+void m95_unsub_topic(int ID, char* topic_name);
+
 
 #endif /* INC_CS_RS485 */
