@@ -10,76 +10,6 @@ void deactivate_pin(int pin_number){
 	vTaskDelay(10 / portTICK_PERIOD_MS);	
 }
 
-int get_length(const char* str){
-  int l = 0;
-  while(*str != '\0'){
-    l++;
-    str++;
-  }
-  return l;
-}
-
-float get_json_value(const char *json_string, const char *char_find, float def, int *sucess){
-  int len_find = get_length(char_find);
-  char* p_find;
-  p_find = char_find;
-
-  int matched;
-  matched = 0;
-
-  while(*json_string != '\0'){
-    if(*json_string == *p_find){
-      while(*json_string == *p_find){
-        if(*json_string == '\0') break;
-        if(*p_find == '\0') break;
-        matched++;
-        json_string++;
-        p_find++;
-      }
-    
-      if(matched == len_find){
-        break;
-      }
-      matched = 0;
-      p_find = char_find;
-    }
-    json_string++;
-  }
-
-  if(matched != len_find){
-    *sucess = 0;
-    return def;
-  }
-
-  matched = 0;
-  int len_float = 0;
-
-  while(matched <3){
-    if(*json_string == '\"'){
-      matched++;
-    }
-    json_string++;
-    if(*json_string == '\"'){
-      continue;
-    }
-    if(matched == 2){
-      len_float++;
-    }
-  }
-
-  json_string--;
-  char value[len_float];
-
-  for(int m = 0; m<len_float; m++){
-    json_string--;
-    value[len_float-m-1] = *json_string;
-  }
-
-  *sucess = 1;
-  //printf("Resultado = %s se detecto el valor\n",(*sucess == 1? "SI":"NO"));
-  return atof(value);
-} 
-
 float read_battery(){
     int value_bat   	= 0;
     int adc_raw       = 0;
@@ -94,7 +24,7 @@ float read_battery(){
     return (raw_volt*_factor + _offset)/1000;
 }
 
-void config_pin_esp32(){
+void config_leds_esp32(){
     
     // // Leds for debug
 
@@ -110,7 +40,6 @@ void config_pin_esp32(){
     // Battery_level
     ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_DEFAULT));
     ESP_ERROR_CHECK(adc1_config_channel_atten(PIN1_ADC, ADC_ATTEN_DB_2_5));    // 3.9 V range
-    
 
     // Power init pins
     power_off_leds();

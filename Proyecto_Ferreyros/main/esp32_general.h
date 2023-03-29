@@ -42,16 +42,10 @@ void activate_pin(int pin_number);
 void deactivate_pin(int pin_number);
 
 // Configuracion del ESP32
-void config_pin_esp32();
+void config_leds_esp32();
 
 // Apagamos los leds
 void power_off_leds();
-
-// Obtenemos el tamaño de un string
-int get_length(const char* str);
-
-// Obtenemos el valor del json asociado segun la llave
-float get_json_value(const char *json_string, const char *char_find,float def, int *sucess);
 
 // Leemos el valor de la bateria
 float read_battery();

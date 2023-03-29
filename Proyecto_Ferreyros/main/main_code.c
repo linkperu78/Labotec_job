@@ -48,9 +48,6 @@ uint8_t rx_modem_ready;
 uint8_t * p_RxModem;
 bool ota_debug = false;
 
-void OTA_check(void);
-void init_project_config();
-
 uint8_t* buffer_rs485;              // buffer para leer datos del RS485
 // RTC_DATA_ATTR int gpio_alarm;
 RTC_DATA_ATTR float _max_level_sleep = MAX_LEVEL_DEFAULT;
@@ -73,7 +70,6 @@ struct datos_modem{
 struct datos_modem m95 = {  .IMEI = "0", .topic = TAG, .ota = TAG,
                             .signal = 99, .battery = 0.00,
                             .fecha = "01/01/23,00:00:00"};
-
 
 static void M95_rx_event_task(void *pvParameters){
     uart_event_t event;
@@ -115,17 +111,22 @@ static void M95_rx_event_task(void *pvParameters){
 // Tarea principal donde leemos y enviamos los datos a la database
 static void _main_task(){
     // Allocate buffers for UART
-    buffer_rs485  = (uint8_t*) malloc(BUF_SIZE_RS485);
+    config_as_server("entel.pe");
+
+
+
+    for(;;){
+        vTaskDelay( 100 / portTICK_PERIOD_MS );
+    }
     vTaskDelete(NULL);
 }
-
 
 void app_main(void)
 {
     printf("---- Iniciando programa ... \n");
     // ---------------------------------------------------------------
     ESP_LOGI("\nInit","Begin Configuration:\nPins Mode Input, Output, ADC\n");
-    config_pin_esp32();
+    config_leds_esp32();
     m95_config();
     // ---------------------------------------------------------------
     xTaskCreate(M95_rx_event_task, "M95_rx_event_task", 4096, NULL, 12, NULL);
@@ -134,40 +135,6 @@ void app_main(void)
     // ---------------------------------------------------------------
     xTaskCreate(_main_task, "_main_task", SENSOR_TASK_STACK_SIZE, NULL, 15, NULL);
 }
-
-void init_project_config(){
-    // ----------- Configuramos los pines ---------------
-    // Salida de sirena     OUT_ALARM
-    // Salida de alarma     OUT_SIRENA     - No implementado
-    // Apagado de sirena    INPUT_PULL
-    gpio_reset_pin(OUT_ALARM);
-    gpio_reset_pin(OUT_LED);
-    
-    gpio_set_direction( OUT_ALARM , GPIO_MODE_OUTPUT );
-    gpio_set_direction( OUT_LED , GPIO_MODE_OUTPUT );
-
-    if(status_led == 0){
-        ESP_LOGI(TAG," - Nivel dentro del rango - \n");
-        gpio_set_level( OUT_ALARM , 0 );
-        gpio_set_level( OUT_LED , 0 );
-    }
-    else{
-        ESP_LOGE(TAG," - Nivel fuera del rango - \n");
-        gpio_set_level( OUT_LED , 1 );
-    }
-
-    gpio_reset_pin(INPUT_PULL);
-    gpio_pulldown_dis(INPUT_PULL);
-    gpio_pullup_en(INPUT_PULL);
-    gpio_set_direction(INPUT_PULL,GPIO_MODE_INPUT);
-
-    // ----------- Configure light sleep mode --------------------
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-    //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
-    
-}
-
 
 void m95_config(){
 	// GPIO PIN CONFIGURATION
