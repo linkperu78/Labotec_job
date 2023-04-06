@@ -25,47 +25,59 @@
 #define MODEM_TASK_STACK_SIZE           (2048)
 #define SENSOR_TASK_PRIO                (10)
 #define MODEM_TASK_PRIO                 (9)
-#define TIME_SLEEP                      5                   // Time in "min"
+#define BLINK_LED_TASK_PRIO             (5)
+#define TIME_SLEEP                      1               // Time in "min"
 #define TAG                             "Radar/"        // Nombre del TAG
 
 #define BUF_SIZE_MODEM                  (1024)
 #define RD_BUF_SIZE                     (BUF_SIZE_MODEM)
 
 // Define PARAMETERS OF PROJECT
-#define OUT_ALARM       GPIO_NUM_21
-#define OUT_LED         GPIO_NUM_18
-#define INPUT_PULL      GPIO_NUM_13
-
-#define MAX_LEVEL_DEFAULT   18.6
-#define MIN_LEVEL_DEFAULT   11.2
+#define OUT_ALARM       GPIO_NUM_21         // Salida a tierra de Alarma 
+#define OUT_LED         GPIO_NUM_18         // Salida a tierra de circulina
+#define INPUT_PULL      GPIO_NUM_13         // Boton para apagar sirena
 
 
-cJSON *doc;
-char * output;
+#define MAX_LEVEL_DEFAULT   50.4        // cm
+#define MIN_LEVEL_DEFAULT   10.2        // cm
+#define COUNT_VALUE_DOWN    2 
 
-static QueueHandle_t uart_modem_queue;
-int rxBytesModem;
+cJSON *doc;                     // Formato JSON para enviar confirmacion de OTA
+                                // al servidor OTA
+char * output;                  // Valor del formato JSON
 
-int wake_count;
-int flag_event_serial = 0;
+static QueueHandle_t uart_modem_queue;      // Handler para comunicacion serial
+static QueueHandle_t interputQueue;          // Handler para interrupcion externa
 
+int rxBytesModem;               // Variable usada en otras librerias para saber el valor en el
+                                // puerto Serial
+int wake_count;                 // Valor para saber si el usuario quiere programar por OTA
+                                // mediante suscripcion al topico /OTA
+
+// Variables para tarea de eventos en el puerto Serial
 uint8_t rx_modem_ready;
 uint8_t * p_RxModem;
-bool ota_debug = false;
 
-void OTA_check(void);
-void init_project_config();
+bool ota_debug = false;             // Bandera para saber si se requiere mostrar funciones
+                                    // durante OTA
+void OTA_check(void);               // Funcion para verificar que el dispositivo requiere OTA
+void init_project_config();         // COnfiguracion de los pines digitales de este proyecto
 
 uint8_t* buffer_rs485;              // buffer para leer datos del RS485
+int end_task_uart_m95;              // Bandera para finalizar tareas de interrupcion
+int end_task_interrupt;
+int delay_on_led = 1000;            // Tiempo que el led permanecera encendido            
+int delay_off_led = 1000;           // Tiempo que el led permanecera apagado
+
+TaskHandle_t Task_interrupt;
+
 // RTC_DATA_ATTR int gpio_alarm;
 RTC_DATA_ATTR float _max_level_sleep = MAX_LEVEL_DEFAULT;
 RTC_DATA_ATTR float _min_level_sleep = MIN_LEVEL_DEFAULT;
 RTC_DATA_ATTR int status_led = 0;
+RTC_DATA_ATTR int status_modem = 0;
+RTC_DATA_ATTR int press_countdown = 0;
 
-int end_task_uart_m95;
-
-//float factors[7] = {10.0 , 10.0 , 1.0 , 10.0 , 1.0 , 1.0 , 1.0};
- 
 struct datos_modem{
     char    IMEI[25];
     char    topic[50];
@@ -79,7 +91,59 @@ struct datos_modem m95 = {  .IMEI = "0", .topic = TAG, .ota = TAG,
                             .signal = 99, .battery = 0.00,
                             .fecha = "01/01/23,00:00:00"};
 
+// Funcion para interrupciones
+static void IRAM_ATTR gpio_interrupt_handler(void *args)
+{
+    int pinNumber = (int)args;
+    xQueueSendFromISR(interputQueue, &pinNumber, NULL);
+}
 
+void alarma_Task(void *params)
+{
+    int pinNumber = 0;      // buffer para almacenar el evento ocurrido
+    while(end_task_interrupt != 1){
+        if (xQueueReceive(interputQueue, &pinNumber, portMAX_DELAY))
+        {
+            ESP_LOGE("Boton task","Se apago la sirena por presionar el boton\n");
+            status_modem = 0;
+            press_countdown = COUNT_VALUE_DOWN;
+            gpio_set_level(OUT_ALARM, 0);
+        }
+    }
+    ESP_LOGI("Boton task","Se termino la tarea\n");
+    vTaskDelete(NULL);
+}
+
+
+// Tarea para parpadear leds segun estado del ESP
+void led_blink_task(void *params)
+{
+    // Esta tarea sirve para saber en que estado se encuentra el ESP32 durante
+    /*  Configurando M95 por comandos AT:
+            Blink: LED_READY - 0.25 sec - 3 sec
+        Programacion por OTA:
+            Blink: LED_READY - 1 sec - 10 sec
+        Light sleep:
+            Blink: LED_READY - 0.25 sec - 10 sec
+        Deep sleep:
+            No controlable
+        Bateria baja:
+            Alarma bocina desactivada
+            Blink: LED_READY - 0.25 sec - 1 sec
+        Cualquier error que ocurra durante iteracion:
+        Error: LED_ERROR - ON
+    */
+    for(;;){
+        activate_pin(LED_READY);
+        vTaskDelay( delay_on_led / portTICK_PERIOD_MS );
+        deactivate_pin(LED_READY);
+        vTaskDelay( delay_off_led / portTICK_PERIOD_MS );
+    }
+    vTaskDelete(NULL);
+}
+
+
+// Funcion para eventos en el puerto serial
 static void M95_rx_event_task(void *pvParameters){
     uart_event_t event;
     uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
@@ -137,10 +201,9 @@ static void _main_task(){
     strcpy(m95.ota,m95.topic);
     strcat(m95.ota,"/OTA");
    
-    //printf("Topic direction = %s\n",m95.topic);
 
     // El mensaje que se va a enviar al broker, requiere de:
-    // Sensor de distancia - Fecha - Nivel de Bateria - Nivel de señal
+    // Sensor de distancia - Fecha - Nivel de Bateria - Nivel de señal -
     // Fecha
     strcpy(m95.fecha,get_m95_date());
     // Nivel de bateria
@@ -179,7 +242,7 @@ static void _main_task(){
     sprintf(mensaje_recv,"%s\r\nS=%d,L=%.2f,V=%.2f",m95.fecha,m95.signal,level,m95.battery);
     ESP_LOGI("PUB MQTT","Mensaje a publicar:\n%s\n",mensaje_recv);
     
-    strcat(m95.topic,"/altura");        // EN Radar/IMEI#/ se setearan los valores
+    strcat(m95.topic,"/data");        // EN Radar/IMEI#/ se setearan los valores
                                         // max y min en formato json
     // Publicamos el valor leido
     for(int m=0; m<3; m++){
@@ -203,12 +266,17 @@ static void _main_task(){
         ESP_LOGE("WARNING", "Niveles fuera del rango aceptable\n");
         mode_light_sleep = true;
         status_led = 1;
-        gpio_set_level(OUT_ALARM,1);
         gpio_set_level(OUT_LED,1);
+        if(press_countdown == 0){
+            status_modem = 1;
+            gpio_set_level(OUT_ALARM,1);
+        }
     }
     else{
         ESP_LOGI("OK","Niveles dentro del rango\n");
         status_led = 0;
+        status_modem = 0;
+        press_countdown = 0;
         gpio_set_level(OUT_ALARM,0);
         gpio_set_level(OUT_LED,0);
     }
@@ -268,12 +336,17 @@ static void _main_task(){
     int time_min = time_sec / 60 ;
     time_sec = time_sec - time_min * 60;
     printf("\nSleep Mode = %d min y %d sec\n", time_min,time_sec);
+    printf("Status Modem = %d - Status Led = %d\n",status_modem , status_led);
 
     // Si la alarma esta encendida hacemos un light_sleep mode
     // donde podamos recibir interrupcion y leer el tiempo que ha pasado
     if(mode_light_sleep){
         // Terminamos la tarea de uart m95
         end_task_uart_m95 = 1;
+        // Terminamos la tarea de interrupt
+        vTaskDelete(Task_interrupt);
+        vTaskDelay( 100 / portTICK_PERIOD_MS );
+
         // Configuramos los metodos para despertar al ESP32
         uint64_t time_before_sleep = esp_timer_get_time();      // Obtenemos el tiempo antes de dormir
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
@@ -285,15 +358,18 @@ static void _main_task(){
 
         // ------------------------------------------------------------------------------
         esp_light_sleep_start();        // Funcion para dormir el ESP32 en modo ligero
-
         int64_t remain_time_sleep = _time_sleep + time_before_sleep - esp_timer_get_time();
         ESP_LOGI("Sleep","Quedaban %llu segundos para despertar\n",( remain_time_sleep / S_TO_US ) );
-        if( remain_time_sleep < 200000){
-            printf("Desperte por timer, reiniciando ... \n");
-            esp_restart();
+        if( remain_time_sleep < 100000){
+            printf("Desperte por timer\n");
+                ESP_LOGI("Sleep","Comenzamos a dormir en modo profundo\n");
+                vTaskDelay( 100 / portTICK_PERIOD_MS );
+                esp_sleep_enable_timer_wakeup(1);
+                esp_deep_sleep_start();
         }
-        printf("Desperte por interrupccion ... \n");
-        gpio_set_level(OUT_ALARM,0);
+        status_modem = 0;
+        press_countdown = COUNT_VALUE_DOWN;
+        gpio_set_level(OUT_ALARM, 0);
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
         _time_sleep = remain_time_sleep;
     }
@@ -303,7 +379,7 @@ static void _main_task(){
     gpio_hold_en(OUT_ALARM);
     gpio_hold_en(OUT_LED);
     gpio_deep_sleep_hold_en();
-    
+
     ESP_LOGI("Sleep","Comenzamos a dormir en modo profundo\n");
     vTaskDelay( 100 / portTICK_PERIOD_MS );
     esp_sleep_enable_timer_wakeup(_time_sleep);
@@ -356,13 +432,14 @@ void OTA_check(void){
 
       vTaskDelay(2000);
 	}
-	while(!repuesta_ota&(intentos<5));
+	while(!repuesta_ota&(intentos<3));
 }
 
 void app_main(void)
 {
     printf("---- Iniciando programa ... \n");
     end_task_uart_m95 = 0;
+    end_task_interrupt = 0;
     esp_sleep_wakeup_cause_t wakeup_reason;
     wakeup_reason = esp_sleep_get_wakeup_cause();
     switch(wakeup_reason){
@@ -372,6 +449,8 @@ void app_main(void)
             gpio_hold_dis(RS485_ENABLE_PIN);
             gpio_hold_dis(OUT_ALARM);
             gpio_hold_dis(OUT_LED);
+            press_countdown--;
+            if(press_countdown < 0) press_countdown = 0;
             break;
         default: printf("\t\t ----------------------- \n"); 
                  break;
@@ -405,7 +484,6 @@ void init_project_config(){
 
     if(status_led == 0){
         ESP_LOGI(TAG," - Nivel dentro del rango - \n");
-        gpio_set_level( OUT_ALARM , 0 );
         gpio_set_level( OUT_LED , 0 );
     }
     else{
@@ -413,10 +491,23 @@ void init_project_config(){
         gpio_set_level( OUT_LED , 1 );
     }
 
+    if(status_modem == 0){
+        gpio_set_level( OUT_ALARM , 0 );
+    }
+    else{
+        gpio_set_level( OUT_ALARM , 1 );
+    }
+
     gpio_reset_pin(INPUT_PULL);
     gpio_pulldown_dis(INPUT_PULL);
     gpio_pullup_en(INPUT_PULL);
     gpio_set_direction(INPUT_PULL,GPIO_MODE_INPUT);
+    gpio_set_intr_type(INPUT_PULL, GPIO_INTR_POSEDGE);
+
+    interputQueue = xQueueCreate(10, sizeof(int));
+    xTaskCreate(alarma_Task, "alarma_Task", 2048, NULL, 2, &Task_interrupt);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(INPUT_PULL, gpio_interrupt_handler, (void *)INPUT_PULL);
 
     // ----------- Configure light sleep mode --------------------
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
@@ -424,7 +515,6 @@ void init_project_config(){
     //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
     
 }
-
 
 void m95_config(){
 	// GPIO PIN CONFIGURATION

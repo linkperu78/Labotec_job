@@ -20,7 +20,8 @@
 #define WHITE_LED           GPIO_NUM_26
 
 #define LED_READY           GREEN_LED
-#define LED_UART_BLINK      WHITE_LED
+#define LED_UART_BLINK      GREEN_LED
+#define LED_ERROR           WHITE_LED
 
 #define PIN1_ADC            ADC1_CHANNEL_4
 
