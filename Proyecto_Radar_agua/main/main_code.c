@@ -26,7 +26,7 @@
 #define SENSOR_TASK_PRIO                (10)
 #define MODEM_TASK_PRIO                 (9)
 #define BLINK_LED_TASK_PRIO             (5)
-#define TIME_SLEEP                      1               // Time in "min"
+#define TIME_SLEEP                      5               // Time in "min"
 #define TAG                             "Radar/"        // Nombre del TAG
 
 #define BUF_SIZE_MODEM                  (1024)
@@ -40,7 +40,7 @@
 
 #define MAX_LEVEL_DEFAULT   50.4        // cm
 #define MIN_LEVEL_DEFAULT   10.2        // cm
-#define COUNT_VALUE_DOWN    2 
+#define COUNT_VALUE_DOWN    6 
 
 cJSON *doc;                     // Formato JSON para enviar confirmacion de OTA
                                 // al servidor OTA

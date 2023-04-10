@@ -1,0 +1,6 @@
+*.sln
+*.suo
+.vs
+/PrinterDemo/bin
+/PrinterDemo/obj
+*.user
